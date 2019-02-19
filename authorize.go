@@ -2,9 +2,12 @@ package oidclient
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"time"
+
+	"github.com/hooklift/pkg/crypto"
 )
 
 // authOptions holds the authentication request parameters as per
@@ -160,7 +163,10 @@ func ACRValues(values ...string) AuthOption {
 // will be returned.
 func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, string, string, error) {
 	cfg := new(authOptions)
+	cfg.responseType = "code"
 	cfg.scope = []string{"openid"}
+	cfg.state = hex.EncodeToString(crypto.RandBytes(32))
+	cfg.nonce = hex.EncodeToString(crypto.RandBytes(32))
 
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
@@ -168,12 +174,7 @@ func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, str
 		}
 	}
 
-	// Generate nonce
-	// Generate state
-	// Set response_type to code
 	// Verify that redirect_uri doesn't use "localhost"
 	// Verify that redirect_uri uses TLS unless it is 127.0.0.1 or 127.0.1.1"
-	// Send client credentials using client_secret_basic only
-
-	return "", "", "", nil
+	return "", cfg.state, cfg.nonce, nil
 }

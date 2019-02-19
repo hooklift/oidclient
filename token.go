@@ -46,11 +46,13 @@ func Nonce(value string) TokenOption {
 // containing authorization code, state or errors. Exchanging authorization code for tokens and returning them through the tokensChan
 // channel. This function exists to make it easier for users implementing native oidc/oauth2 applications such as CLIs or Electron apps.
 func (p *Provider) Loopback(ctx context.Context, tokensChan <-chan Tokens, opts ...TokenOption) (string, error) {
+	// Send client credentials using client_secret_basic only
 	return "", errors.New("not implemented yet")
 }
 
 // Tokens retrives tokens from OpenID Connect provider using a previously acquired authorization grant code.
 // The URI parameter is the full URI through which the OpenID Connect provider is sending the authorization grant code and state.
 func (p *Provider) Tokens(ctx context.Context, uri string, opts ...TokenOption) (*Tokens, error) {
+	// Send client credentials using client_secret_basic only
 	return nil, nil
 }

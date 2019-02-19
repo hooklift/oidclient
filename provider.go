@@ -1,7 +1,7 @@
 // Package oidclient implements a strict and secure OpenID Connect client.
 // It does not forgive or work around broken OpenID Connect or OAuth2 providers.
 // Supports verifying RSA256 and ED25519 signed ID tokens.
-// Only implements authorization code flow.
+// Only implements the most secured flow, authorization code flow.
 package oidclient
 
 import (
