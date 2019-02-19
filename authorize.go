@@ -3,11 +3,13 @@ package oidclient
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hooklift/pkg/crypto"
+	"github.com/pkg/errors"
 )
 
 // authOptions holds the authentication request parameters as per
@@ -159,7 +161,7 @@ func ACRValues(values ...string) AuthOption {
 }
 
 // AuthURI generates the authorization URI along with state and nonce values that must be included in the subsequent request for tokens.
-// The state and nonce values returned by this function must be used in the subsequent request for tokens. Otherwise, no tokens
+// The state and nonce values returned by this function must be used in the request for tokens. Otherwise, no tokens
 // will be returned.
 func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, string, string, error) {
 	cfg := new(authOptions)
@@ -174,7 +176,55 @@ func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, str
 		}
 	}
 
+	// TODO(c4milo): validate that a redirect URI is provided
+	// TODO(c4milo): validate that a clientID is provided
+	// TODO(c4milo): validate that responseType is provided
+	// TODO(c4milo): validate that state is set
+	// TODO(c4milo): validate that nonce is set
 	// Verify that redirect_uri doesn't use "localhost"
 	// Verify that redirect_uri uses TLS unless it is 127.0.0.1 or 127.0.1.1"
-	return "", cfg.state, cfg.nonce, nil
+
+	query := url.Values{}
+	query.Set("response_type", cfg.responseType)
+	query.Set("scope", strings.Join(cfg.scope, " "))
+	query.Set("state", cfg.state)
+	query.Set("redirect_uri", cfg.redirectURI)
+	query.Set("client_id", cfg.clientID)
+	query.Set("nonce", cfg.nonce)
+
+	if cfg.display != "" {
+		query.Set("display", cfg.display)
+	}
+
+	if cfg.prompt != "" {
+		query.Set("prompt", cfg.prompt)
+	}
+
+	if cfg.maxAge != 0 {
+		query.Set("max_age", strconv.Itoa(cfg.maxAge))
+	}
+
+	if len(cfg.uiLocales) > 0 {
+		query.Set("ui_locales", strings.Join(cfg.uiLocales, " "))
+	}
+
+	if cfg.idTokenHint != "" {
+		query.Set("id_token_hint", cfg.idTokenHint)
+	}
+
+	if cfg.loginHint != "" {
+		query.Set("login_hint", cfg.loginHint)
+	}
+
+	if len(cfg.acrValues) > 0 {
+		query.Set("acr_values", strings.Join(cfg.acrValues, " "))
+	}
+
+	authEndpoint, err := url.Parse(p.AuthorizationEndpoint)
+	if err != nil {
+		return "", "", "", errors.Wrapf(err, "failed parsing authorization endpoint: %s", p.AuthorizationEndpoint)
+	}
+
+	authEndpoint.RawQuery = query.Encode()
+	return authEndpoint.String(), cfg.state, cfg.nonce, nil
 }
