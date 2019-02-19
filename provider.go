@@ -25,6 +25,7 @@ type providerOptions struct {
 	clientID      string
 	clientSecret  string
 	skipTLSVerify bool
+	tokenStore    TokenStore
 }
 
 // ProviderOption defines a type for passing Provider instantiation parameters.
@@ -53,6 +54,14 @@ func ClientSecret(secret string) ProviderOption {
 func SkipTLSVerify() ProviderOption {
 	return func(o *providerOptions) error {
 		o.skipTLSVerify = true
+		return nil
+	}
+}
+
+// WithTokenStore sets a concrete implementation of the TokenStore interface. It is used to retrieve and persist tokens.
+func WithTokenStore(store TokenStore) ProviderOption {
+	return func(o *providerOptions) error {
+		o.tokenStore = store
 		return nil
 	}
 }
