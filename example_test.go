@@ -109,7 +109,7 @@ func Example_mobile() {
 	httpClient, err := provider.HTTPClient(ctx, tokens)
 }
 
-func Example_web() {
+func ExampleExamples_web() {
 	ctx := context.Background()
 	provider, err := oidclient.New(ctx, "https://id.hooklift.io", []oidclient.ProviderOption{
 		oidclient.ClientID("blah"),
