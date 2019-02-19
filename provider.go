@@ -12,7 +12,7 @@ import (
 
 // TokenStore defines an interface to store and retrieve tokens. Encryption at rest is highly suggested.
 type TokenStore interface {
-	Get(ctx context.Context, id string) (Tokens, error)
+	Get(ctx context.Context, id string) (*Tokens, error)
 	Save(ctx context.Context, tokens *Tokens) error
 }
 
@@ -58,7 +58,8 @@ func SkipTLSVerify() ProviderOption {
 	}
 }
 
-// WithTokenStore sets a concrete implementation of the TokenStore interface. It is used to retrieve and persist tokens.
+// WithTokenStore sets a concrete implementation of the TokenStore interface. It is used to retrieve and persist tokens when
+// using the HTTP handler.
 func WithTokenStore(store TokenStore) ProviderOption {
 	return func(o *providerOptions) error {
 		o.tokenStore = store
