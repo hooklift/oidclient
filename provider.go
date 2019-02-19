@@ -122,6 +122,6 @@ func (p *Provider) Keys(ctx context.Context) error {
 
 // HTTPClient returns a HTTP client that auto-appends Authorization header with the bearer access tokens and that can
 // also automatically refresh access tokens if they expire.
-func (p *Provider) HTTPClient(ctxt context.Context, tokens *Tokens) *http.Client {
+func (p *Provider) HTTPClient(ctxt context.Context, tokens *Tokens) (*http.Client, error) {
 	return nil, errors.New("not implemented")
 }

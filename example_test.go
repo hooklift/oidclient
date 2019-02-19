@@ -60,7 +60,7 @@ func Example_desktop() {
 	// 11. Print out received tokens
 	log.Println("Tokens: %+v", tokens)
 
-	httpClient := provider.HTTPClient(ctx, tokens)
+	httpClient, err := provider.HTTPClient(ctx, &tokens)
 }
 
 func Example_mobile() {
@@ -71,7 +71,7 @@ func Example_mobile() {
 		oidclient.ClientID("client_blah"),
 		oidclient.ClientSecret("secret_blah"),
 		oidclient.SkipTLSVerify(),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("error retrieving provider's configuration: %v", err)
 	}
@@ -106,7 +106,7 @@ func Example_mobile() {
 
 	log.Println("Tokens: %+v", tokens)
 
-	httpClient := provider.HTTPClient(ctx, tokens)
+	httpClient, err := provider.HTTPClient(ctx, tokens)
 }
 
 func Example_web() {
@@ -120,7 +120,7 @@ func Example_web() {
 			Password: "",
 			DB:       0,
 		}),
-	})
+	}...)
 	if err != nil {
 		log.Fatal("error retrieving provider's configuration %v", err)
 	}
@@ -133,7 +133,7 @@ func Example_web() {
 
 	// Initialize authentication handler, it will redirect user to OpenID Connect provider for authentication and consent
 	// if a httpClient is not found in the request's Context.
-	handler = provider.Handler(mux, []oidclient.AuthOption{
+	handler := provider.Handler(mux, []oidclient.AuthOption{
 		oidclient.RedirectURI("http://localhost:3000/oauth/callback"),
 		oidclient.Scope("profile", "email", "offline"),
 	}...)
