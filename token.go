@@ -31,7 +31,7 @@ func Nonce(value string) TokenOption {
 
 // Loopback spins up a HTTP server listening in 127.0.0.1 to receive OIDC provider's redirect with authorization code, state or errors.
 // Exchanges authorization code for tokens and returns them in the tokensChan.
-func (p *Provider) Lookback(ctx context.Context, tokensChan chan<- Tokens, opts ...TokenOption) (string, error) {
+func (p *Provider) Loopback(ctx context.Context, tokensChan chan<- Tokens, opts ...TokenOption) (string, error) {
 
 	return "", errors.New("not implemented yet")
 }
