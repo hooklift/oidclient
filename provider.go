@@ -27,10 +27,11 @@ type providerOptions struct {
 	skipTLSVerify bool
 }
 
-// ProviderOption ...
+// ProviderOption defines a type for passing Provider instantiation parameters.
 type ProviderOption func(*providerOptions) error
 
-// ClientID...
+// ClientID sets the openidc/oauth2 client application identifier. You get client credentials when the client app
+// is created in your identity provider as a native or web application, public or private.
 func ClientID(id string) ProviderOption {
 	return func(o *providerOptions) error {
 		o.clientID = id
@@ -38,7 +39,8 @@ func ClientID(id string) ProviderOption {
 	}
 }
 
-// ClientSecret...
+// ClientSecret sets the openidc/oauth2 client application secret. You get client credentials when the client app
+// is created in your identity provider as a native or web application, public or private.
 func ClientSecret(secret string) ProviderOption {
 	return func(o *providerOptions) error {
 		o.clientSecret = secret
@@ -46,7 +48,8 @@ func ClientSecret(secret string) ProviderOption {
 	}
 }
 
-// SkipTLSVerify...
+// SkipTLSVerify allows to skip TLS verification during development. It is not recommended to enable this parameter in
+// production applications.
 func SkipTLSVerify() ProviderOption {
 	return func(o *providerOptions) error {
 		o.skipTLSVerify = true
@@ -54,10 +57,11 @@ func SkipTLSVerify() ProviderOption {
 	}
 }
 
-// UserInfo...
+// UserInfo defines the information usually returned by identity providers for the owner of an access or ID token.
 type UserInfo struct{}
 
-// Provider holds the identity provider configuration information, discovered during initialization.
+// Provider holds the identity provider configuration information, discovered during initialization. This configuration
+// is cached and refreshed based on cache-control policies returned by the identity provider.
 type Provider struct {
 	Issuer                       string   `json:"issuer,omitempty"`
 	AuthorizationEndpoint        string   `json:"authorization_endpoint,omitempty"`
@@ -90,7 +94,7 @@ func (p *Provider) UserInfo(ctx context.Context) (*UserInfo, error) {
 	return nil, nil
 }
 
-// RegisterClient allows to dynamically register oidc/oauth2 client applications on identity providers that supports https://tools.ietf.org/html/rfc7591
+// RegisterClient allows to dynamically register oidc/oauth2 client applications on identity providers that support https://tools.ietf.org/html/rfc7591
 func (p *Provider) RegisterClient(ctx context.Context) error {
 	if p.RegistrationEndpoint == "" {
 		return ErrNotSupported

@@ -49,7 +49,7 @@ func RedirectURI(uri string) AuthOption {
 
 // Scope appends scopes to the list of scopes to request authorization for.
 // There is no need to provide "openid" as scope, it is already added by default.
-// Users can approve or disapprove the client app from having the request access level.
+// Users can approve or disapprove the client app from having the requested access level.
 func Scope(scope ...string) AuthOption {
 	return func(o *authOptions) error {
 		o.scope = append(o.scope, scope...)
