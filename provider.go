@@ -7,6 +7,7 @@ package oidclient
 import (
 	"context"
 	"errors"
+	"net/http"
 )
 
 // TokenStore defines an interface to store and retrieve tokens. Encryption at rest is highly suggested.
@@ -56,16 +57,7 @@ func SkipTLSVerify() ProviderOption {
 // UserInfo...
 type UserInfo struct{}
 
-// Tokens...
-type Tokens struct {
-	IDToken      string `json:"id_token,omitempty"`
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-}
-
-// Provider...
+// Provider holds the identity provider configuration information, discovered during initialization.
 type Provider struct {
 	Issuer                       string   `json:"issuer,omitempty"`
 	AuthorizationEndpoint        string   `json:"authorization_endpoint,omitempty"`
@@ -93,10 +85,12 @@ func New(ctx context.Context, providerURL string, opts ...ProviderOption) (*Prov
 	return nil, nil
 }
 
+// UserInfo returns user for the ID token subject or owner.
 func (p *Provider) UserInfo(ctx context.Context) (*UserInfo, error) {
 	return nil, nil
 }
 
+// RegisterClient allows to dynamically register oidc/oauth2 client applications on identity providers that supports https://tools.ietf.org/html/rfc7591
 func (p *Provider) RegisterClient(ctx context.Context) error {
 	if p.RegistrationEndpoint == "" {
 		return ErrNotSupported
@@ -104,6 +98,7 @@ func (p *Provider) RegisterClient(ctx context.Context) error {
 	return nil
 }
 
+// RevokeToken allows to revoke access tokens on identity providers that support https://tools.ietf.org/html/rfc7009
 func (p *Provider) RevokeToken(ctx context.Context) error {
 	if p.RevocationEndpoint == "" {
 		return ErrNotSupported
@@ -111,6 +106,7 @@ func (p *Provider) RevokeToken(ctx context.Context) error {
 	return nil
 }
 
+// IntrospectToken allows to gather access token information form identity providers that support https://tools.ietf.org/html/rfc7662
 func (p *Provider) IntrospectToken(ctx context.Context) error {
 	if p.IntrospectionEndpoint == "" {
 		return ErrNotSupported
@@ -118,6 +114,14 @@ func (p *Provider) IntrospectToken(ctx context.Context) error {
 	return nil
 }
 
+// Keys allows to retrieve identity provider's public token signing keys in order to verify that tokens
+// have not been modified in transit.
 func (p *Provider) Keys(ctx context.Context) error {
 	return nil
+}
+
+// HTTPClient returns a HTTP client that auto-appends Authorization header with the bearer access tokens and that can
+// also automatically refresh access tokens if they expire.
+func (p *Provider) HTTPClient(ctxt context.Context, tokens *Tokens) *http.Client {
+	return nil, errors.New("not implemented")
 }

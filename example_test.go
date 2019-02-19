@@ -17,7 +17,7 @@ func Example_desktop() {
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
 		oidclient.SkipTLSVerify(),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("error retrieving provider's configuration: %v", err)
 	}
@@ -26,17 +26,17 @@ func Example_desktop() {
 	authURI, state, nonce, err := provider.AuthURI(ctx, []oidclient.AuthOption{
 		oidclient.RedirectURI(redirectURI),
 		oidclient.Scope("profile", "email", "offline"),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("error building authorize URL: %v", err)
 	}
 
 	// 3. Start a HTTP server on loopback network interface. It receives authorization code and exchanges it for tokens.
-	tokensCh := make(chan<- oidclient.Tokens)
+	tokensCh := make(<-chan oidclient.Tokens)
 	redirectURI, err := provider.Loopback(ctx, tokensCh, []oidclient.TokenOption{
 		oidclient.State(state),
 		oidclient.Nonce(nonce),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("failed to start local HTTP server: %v", err)
 	}
@@ -81,7 +81,7 @@ func Example_mobile() {
 	authURI, state, nonce, err := provider.AuthURI(ctx, []oidclient.AuthOption{
 		oidclient.RedirectURI(redirectURI),
 		oidclient.Scope("profile", "email", "offline"),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("error building authorize URL: %v", err)
 	}
@@ -93,13 +93,13 @@ func Example_mobile() {
 	// error and error_description.
 
 	// 7. Our Application Delegate gets called with RedirectURI containing the code, state or error and error_description as query parameters
-	// 8. Get tokens using received redirectURI, authorization code and state. Validate state, nonce, intended audience and token's signatures;
-	// then return tokens.
+	// 8. Retrieves tokens and validates state, nonce, intended audience and token's signatures.
+	// As an example, assume the following redirectURI is sent to our App Delegate function:
 	redirectURI = "app.hooklift.flappy://oauth-callback/?code=abasfasdf&state=dasdfasdfasdf"
 	tokens, err := provider.Tokens(ctx, redirectURI, []oidclient.TokenOption{
 		oidclient.State(state),
 		oidclient.Nonce(nonce),
-	})
+	}...)
 	if err != nil {
 		log.Fatalf("failed to retrieve tokens: %v", err)
 	}
@@ -136,7 +136,7 @@ func Example_web() {
 	handler = provider.Handler(mux, []oidclient.AuthOption{
 		oidclient.RedirectURI("http://localhost:3000/oauth/callback"),
 		oidclient.Scope("profile", "email", "offline"),
-	})
+	}...)
 
 	srv := &http.Server{
 		Addr:    "localhost:8080",
