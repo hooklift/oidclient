@@ -24,7 +24,6 @@ type authOptions struct {
 	acrValues    []string
 	state        string
 	nonce        string
-	clientID     string
 	responseType string
 }
 
@@ -192,11 +191,6 @@ func (p *Provider) AuthorizationURL(ctx context.Context, opts ...AuthOption) (st
 		return "", errors.New("redirect URL requires https scheme")
 	}
 
-	cfg.clientID = p.clientID
-	if cfg.clientID == "" {
-		return "", errors.New("invalid client ID")
-	}
-
 	if cfg.responseType == "" {
 		cfg.responseType = "code"
 	}
@@ -211,7 +205,6 @@ func (p *Provider) AuthorizationURL(ctx context.Context, opts ...AuthOption) (st
 	query.Set("state", cfg.state)
 	query.Set("nonce", cfg.nonce)
 	query.Set("redirect_uri", redirectURI.String())
-	query.Set("client_id", cfg.clientID)
 
 	if cfg.display != "" {
 		query.Set("display", cfg.display)
