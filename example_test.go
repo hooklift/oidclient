@@ -9,6 +9,20 @@ import (
 	"github.com/hooklift/oidclient"
 )
 
+type RedisTokenStore struct {
+	Address  string
+	Password string
+	DB       int
+}
+
+func (r *RedisTokenStore) Save(ctx context.Context, tokens *oidclient.Tokens) error {
+	return nil
+}
+
+func (r *RedisTokenStore) Get(ctx context.Context, id string) (*oidclient.Tokens, error) {
+	return nil, nil
+}
+
 func Example_desktop() {
 	ctx := context.Background()
 
@@ -22,23 +36,27 @@ func Example_desktop() {
 		log.Fatalf("error retrieving provider's configuration: %v", err)
 	}
 
-	// 2. Generate provider authorization URI for the user to open.
-	authURI, state, nonce, err := provider.AuthURI(ctx, []oidclient.AuthOption{
-		oidclient.RedirectURI(redirectURI),
-		oidclient.Scope("profile", "email", "offline"),
-	}...)
-	if err != nil {
-		log.Fatalf("error building authorize URL: %v", err)
-	}
-
-	// 3. Start a HTTP server on loopback network interface. It receives authorization code and exchanges it for tokens.
-	tokensCh := make(<-chan oidclient.Tokens)
-	redirectURI, err := provider.Loopback(ctx, tokensCh, []oidclient.TokenOption{
+	// 2. Start a HTTP server on loopback network interface. It receives authorization code and exchanges it for tokens.
+	tokensCh := make(chan oidclient.Tokens)
+	state := oidclient.GenerateNonce()
+	nonce := oidclient.GenerateNonce()
+	redirectURI, err := provider.Loopback(ctx, tokensCh, []oidclient.AuthOption{
 		oidclient.State(state),
 		oidclient.Nonce(nonce),
 	}...)
 	if err != nil {
 		log.Fatalf("failed to start local HTTP server: %v", err)
+	}
+
+	// 3. Generate provider authorization URL for the user to open in a browser
+	authURI, err := provider.AuthorizationURL(ctx, []oidclient.AuthOption{
+		oidclient.RedirectURI(redirectURI),
+		oidclient.State(state),
+		oidclient.Nonce(nonce),
+		oidclient.Scope("profile", "email", "offline"),
+	}...)
+	if err != nil {
+		log.Fatalf("error building authorize URL: %v", err)
 	}
 
 	log.Println("Open the following URL in your browser: %s", authURI)
@@ -53,14 +71,14 @@ func Example_desktop() {
 	tokens := <-tokensCh
 
 	// 10. Check for any errors
-	if tokens.Error != nil {
-		log.Fatalf("failed retrieving tokens: %+v", tokens.Error)
+	if tokens.Error != "" {
+		log.Fatalf("failed retrieving tokens. %s: %s - %s", tokens.Error, tokens.ErrorDescription, tokens.ErrorURI)
 	}
 
 	// 11. Print out received tokens
 	log.Println("Tokens: %+v", tokens)
 
-	httpClient, err := provider.HTTPClient(ctx, &tokens)
+	// httpClient, err := provider.HTTPClient(ctx, &tokens)
 }
 
 func Example_mobile() {
@@ -77,29 +95,29 @@ func Example_mobile() {
 	}
 
 	// 2. Get provider authorization URI for the user to open.
+	state := oidclient.GenerateNonce()
+	nonce := oidclient.GenerateNonce()
 	redirectURI := "app.hooklift.flappy:/oauth/callback"
-	authURI, state, nonce, err := provider.AuthURI(ctx, []oidclient.AuthOption{
+	authURL, err := provider.AuthorizationURL(ctx, []oidclient.AuthOption{
 		oidclient.RedirectURI(redirectURI),
 		oidclient.Scope("profile", "email", "offline"),
+		oidclient.State(state),
+		oidclient.Nonce(nonce),
 	}...)
 	if err != nil {
 		log.Fatalf("error building authorize URL: %v", err)
 	}
 
-	// 3. Native app opens a browser or asks user to follow the authorization URL: authURI
-	// 4. OpenID Connect provider authenticates user and asks for consent for "client_blah" to get tokens
+	// 3. Native app opens a browser or asks user to follow the authorization URL: authURL
+	// 4. OpenID Connect provider authenticates user and asks user for consent for "client_blah" to access her resources
 	// 5. User approves or disapproves
 	// 6. OpenID Connect Provider redirects user back to us through redirectURI with query parameters: code and state, or
 	// error and error_description.
 
 	// 7. Our Application Delegate gets called with RedirectURI containing the code, state or error and error_description as query parameters
 	// 8. Retrieves tokens and validates state, nonce, intended audience and token's signatures.
-	// As an example, assume the following redirectURI is sent to our App Delegate function:
-	redirectURI = "app.hooklift.flappy://oauth-callback/?code=abasfasdf&state=dasdfasdfasdf"
-	tokens, err := provider.Tokens(ctx, redirectURI, []oidclient.TokenOption{
-		oidclient.State(state),
-		oidclient.Nonce(nonce),
-	}...)
+	authCode := "abasfasdf" // Retrieved from the URL passed by App Delegate to the app
+	tokens, err := provider.Tokens(ctx, authCode, redirectURI)
 	if err != nil {
 		log.Fatalf("failed to retrieve tokens: %v", err)
 	}
@@ -115,7 +133,7 @@ func Example_web() {
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
 		oidclient.SkipTLSVerify(),
-		oidclient.TokenStore(&RedisTokenStore{
+		oidclient.WithTokenStore(&RedisTokenStore{
 			Address:  "localhost:6379",
 			Password: "",
 			DB:       0,
@@ -130,6 +148,8 @@ func Example_web() {
 		httpClient := oidclient.FromContext(req.Context())
 		fmt.Fprintf(w, "Hola Mundo!")
 	})
+
+	mux.HandleFunc("/oauth/callback", provider.TokenHandler([]oidclient.AuthOption{}...))
 
 	// Initialize authentication handler, it will redirect user to OpenID Connect provider for authentication and consent
 	// if a httpClient is not found in the request's Context.

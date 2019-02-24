@@ -2,57 +2,161 @@ package oidclient
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"io"
+	"io/ioutil"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/pkg/errors"
+)
+
+const (
+	errInvalidRequest = "invalid_request"
+	errInvalidGrant   = "invalid_grant"
 )
 
 // Tokens holds the response received by the identity provider when exchanging authorization grant codes for tokens.
-// Users are encouraged to store these tokens and encrypt them at rest. ID and access tokens usually have a short life, ~4 hours,
-// refresh tokens do not have an expiration time, they must be secured appropiately.
+// Users are encouraged to store these tokens and encrypt them at rest.
+// Refresh tokens do not have an expiration time, extra care must be taken when storing them.
 type Tokens struct {
-	IDToken      string `json:"id_token,omitempty"`
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	Error        error  `json:"-"`
+	IDToken          string `json:"id_token,omitempty"`
+	AccessToken      string `json:"access_token"`
+	TokenType        string `json:"token_type"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	Error            string `json:"error,omitempty"`
+	ErrorDescription string `json:"error_description,omitempty"`
+	ErrorURI         string `json:"error_uri,omitempty"`
 }
 
-// tokenOptions holds internal options for generating tokens.
-type tokenOptions struct {
-	state string
-	nonce string
+// randomPort generates a random port between IANA's dynamic/private port range.
+// This is 49151-65535. https://en.wikipedia.org/wiki/Registered_port
+func randomPort() string {
+	max := 65535
+	min := 49151
+	port := rand.Intn(max-min) + min
+	return strconv.Itoa(port)
 }
 
-// TokenOption represents an option for retrieving tokens.
-type TokenOption func(*tokenOptions) error
-
-// State sets a countermeasure for CSRF attacks.
-func State(value string) TokenOption {
-	return func(o *tokenOptions) error {
-		o.state = value
-		return nil
-	}
-}
-
-// Nonce sets random value as countermeasure for replay attacks. It must have good entropy.
-func Nonce(value string) TokenOption {
-	return func(o *tokenOptions) error {
-		o.nonce = value
-		return nil
-	}
-}
-
-// Loopback spins up HTTP server listening in 127.0.0.1 and an unprivileged random port. It receives OIDC provider's redirections,
+// Loopback spins up HTTP server listening in 127.0.0.1 and an unprivileged random TCP port. It receives OIDC provider's redirections,
 // containing authorization code, state or errors. Exchanging authorization code for tokens and returning them through the tokensChan
 // channel. This function exists to make it easier for users implementing native oidc/oauth2 applications such as CLIs or Electron apps.
-func (p *Provider) Loopback(ctx context.Context, tokensChan <-chan Tokens, opts ...TokenOption) (string, error) {
-	// Send client credentials using client_secret_basic only
-	return "", errors.New("not implemented yet")
+func (p *Provider) Loopback(ctx context.Context, tokensChan chan<- Tokens, opts ...AuthOption) (string, error) {
+	var (
+		err    error
+		tokens Tokens
+	)
+
+	cfg := new(authOptions)
+	for _, opt := range opts {
+		if err := opt(cfg); err != nil {
+			return "", err
+		}
+	}
+
+	address := net.JoinHostPort("127.0.0.1", randomPort())
+	path := "/callback"
+	redirectURI := "http://" + address + path
+	go func() {
+		http.HandleFunc(path, func(w http.ResponseWriter, req *http.Request) {
+			defer func() {
+				tokensChan <- tokens
+			}()
+
+			query := req.URL.Query()
+			if query.Get("state") != cfg.state {
+				tokens.Error = errInvalidRequest
+				return
+			}
+
+			code := query.Get("code")
+			if code == "" {
+				tokens.Error = errInvalidGrant
+				return
+			}
+
+			tokens, err := p.Tokens(ctx, code, redirectURI)
+			if err != nil {
+				tokens.Error = err.Error()
+				return
+			}
+		})
+
+		if err := http.ListenAndServe(address, nil); err != http.ErrServerClosed {
+			panic("failed starting up local HTTP server")
+		}
+	}()
+
+	return redirectURI, err
 }
 
-// Tokens retrives tokens from OpenID Connect provider using a previously acquired authorization grant code.
-// The URI parameter is the full URI through which the OpenID Connect provider is sending the authorization grant code and state.
-func (p *Provider) Tokens(ctx context.Context, uri string, opts ...TokenOption) (*Tokens, error) {
-	// Send client credentials using client_secret_basic only
-	return nil, nil
+// RefreshToken allows to refresh Access and ID tokens, given a Refresh Token.
+func (p *Provider) RefreshToken(ctx context.Context, refreshToken string, scope ...string) (*Tokens, error) {
+	query := url.Values{}
+	query.Set("grant_type", "refresh_token")
+	query.Set("refresh_token", refreshToken)
+
+	if len(scope) > 0 {
+		// Allows to get a new access token with a reduced scope, as long as the IdP supports it.
+		query.Set("scope", strings.Join(scope, " "))
+	}
+
+	return p.tokens(ctx, query)
+}
+
+// Tokens retrieves tokens using the authorization grant code flow.
+func (p *Provider) Tokens(ctx context.Context, authCode, redirectURI string) (*Tokens, error) {
+	query := url.Values{}
+	query.Set("grant_type", "authorization_code")
+	query.Set("code", authCode)
+
+	if redirectURI != "" {
+		query.Set("redirect_uri", redirectURI)
+	}
+	return p.tokens(ctx, query)
+}
+
+func (p *Provider) tokens(ctx context.Context, query url.Values) (*Tokens, error) {
+	u, err := url.Parse(p.TokenEndpoint)
+	if err != nil {
+		return nil, errors.Wrapf(err, "invalid token endpoint: %s", p.TokenEndpoint)
+	}
+
+	res, err := p.httpClient.PostForm(u.String(), query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed getting tokens from provider")
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed reading tokens response")
+	}
+
+	tks := new(Tokens)
+	if err := json.Unmarshal(body, tks); err != nil {
+		return nil, errors.Wrap(err, "failed decoding tokens response")
+	}
+
+	if err := validateTokens(tks); err != nil {
+		return nil, errors.Wrap(err, "failed tokens validations")
+	}
+
+	return tks, nil
+}
+
+// validateTokens verifies ID token signature, expiration, audience and nonce.
+func validateTokens(tks *Tokens) error {
+	// TODO(c4milo): Validate ID tokens's signature
+	// TODO(c4milo): Validate at_hash
+	// TODO(c4milo): Validate c_hash
+	// TODO(c4milo): Validate token expiration
+	// TODO(c4milo): Validate intended ID Token audience
+	// TODO(c4milo): Validate ID Token nonce
+	return nil
 }

@@ -2,33 +2,30 @@ package oidclient
 
 import (
 	"context"
-	"encoding/hex"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/hooklift/pkg/crypto"
 	"github.com/pkg/errors"
 )
 
 // authOptions holds the authentication request parameters as per
 // https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
 type authOptions struct {
-	redirectURI string
-	scope       []string
-	display     string
-	prompt      string
-	maxAge      int
-	idTokenHint string
-	loginHint   string
-	uiLocales   []string
-	acrValues   []string
-	// The following are not exposed to be configured by users.
-	clientID     string
-	responseType string
+	redirectURI  string
+	scope        []string
+	display      string
+	prompt       string
+	maxAge       int
+	idTokenHint  string
+	loginHint    string
+	uiLocales    []string
+	acrValues    []string
 	state        string
 	nonce        string
+	clientID     string
+	responseType string
 }
 
 // AuthOption defines a type to process authorization config options
@@ -38,15 +35,6 @@ type AuthOption func(*authOptions) error
 // RedirectURI sets the redirect URI to which the OpenID provider should send the authorization code to.
 func RedirectURI(uri string) AuthOption {
 	return func(o *authOptions) error {
-		url, err := url.Parse(uri)
-		if err != nil {
-			return err
-		}
-
-		if url.Hostname() == "localhost" {
-			return errors.New("localhost is not allowed, use 127.0.0.1 or ::1 instead")
-		}
-
 		o.redirectURI = uri
 		return nil
 	}
@@ -160,37 +148,70 @@ func ACRValues(values ...string) AuthOption {
 	}
 }
 
-// AuthURI generates the authorization URI along with state and nonce values that must be included in the subsequent request for tokens.
-// The state and nonce values returned by this function must be used in the request for tokens. Otherwise, no tokens
-// will be returned.
-func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, string, string, error) {
+// Nonce sets a value used to associate a client session with an ID Token, and to mitigate replay attacks.
+func Nonce(value string) AuthOption {
+	return func(o *authOptions) error {
+		o.nonce = value
+		return nil
+	}
+}
+
+// State is an opaque value used by the client to maintain state between the request and callback, mitigating
+// potential CSRF attacks.
+func State(value string) AuthOption {
+	return func(o *authOptions) error {
+		o.state = value
+		return nil
+	}
+}
+
+// AuthorizationURL generates the URL to send the user to for authentication and authorization consent.
+func (p *Provider) AuthorizationURL(ctx context.Context, opts ...AuthOption) (string, error) {
 	cfg := new(authOptions)
-	cfg.responseType = "code"
 	cfg.scope = []string{"openid"}
-	cfg.state = hex.EncodeToString(crypto.RandBytes(32))
-	cfg.nonce = hex.EncodeToString(crypto.RandBytes(32))
 
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
-			return "", "", "", err
+			return "", err
 		}
 	}
 
-	// TODO(c4milo): validate that a redirect URI is provided
-	// TODO(c4milo): validate that a clientID is provided
-	// TODO(c4milo): validate that responseType is provided
-	// TODO(c4milo): validate that state is set
-	// TODO(c4milo): validate that nonce is set
-	// Verify that redirect_uri doesn't use "localhost"
-	// Verify that redirect_uri uses TLS unless it is 127.0.0.1 or 127.0.1.1"
+	redirectURI, err := url.Parse(cfg.redirectURI)
+	if err != nil {
+		return "", errors.Wrapf(err, "invalid redirect URI")
+	}
+
+	// FIXME(c4milo): As per rfc8252 we cannot assume IPv4
+	if redirectURI.Hostname() == "localhost" {
+		// Avoid DNS resolvers as per https://tools.ietf.org/html/rfc8252#section-8.3
+		redirectURI.Host = "127.0.0.1"
+	}
+
+	// Forces redirect URI to use TLS as it will likely be rejected by the IdP if it isn't.
+	if redirectURI.Hostname() != "127.0.0.1" && redirectURI.Scheme != "https" {
+		return "", errors.New("redirect URL requires https scheme")
+	}
+
+	cfg.clientID = p.clientID
+	if cfg.clientID == "" {
+		return "", errors.New("invalid client ID")
+	}
+
+	if cfg.responseType == "" {
+		cfg.responseType = "code"
+	}
+
+	if cfg.state == "" || cfg.nonce == "" {
+		return "", errors.New("state and nonce cannot be empty")
+	}
 
 	query := url.Values{}
 	query.Set("response_type", cfg.responseType)
 	query.Set("scope", strings.Join(cfg.scope, " "))
 	query.Set("state", cfg.state)
-	query.Set("redirect_uri", cfg.redirectURI)
-	query.Set("client_id", cfg.clientID)
 	query.Set("nonce", cfg.nonce)
+	query.Set("redirect_uri", redirectURI.String())
+	query.Set("client_id", cfg.clientID)
 
 	if cfg.display != "" {
 		query.Set("display", cfg.display)
@@ -222,9 +243,10 @@ func (p *Provider) AuthURI(ctx context.Context, opts ...AuthOption) (string, str
 
 	authEndpoint, err := url.Parse(p.AuthorizationEndpoint)
 	if err != nil {
-		return "", "", "", errors.Wrapf(err, "failed parsing authorization endpoint: %s", p.AuthorizationEndpoint)
+		return "", errors.Wrapf(err, "failed parsing authorization endpoint: %s", p.AuthorizationEndpoint)
 	}
 
 	authEndpoint.RawQuery = query.Encode()
-	return authEndpoint.String(), cfg.state, cfg.nonce, nil
+
+	return authEndpoint.String(), nil
 }

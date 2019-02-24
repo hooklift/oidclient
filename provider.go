@@ -1,13 +1,20 @@
-// Package oidclient implements a strict and secure OpenID Connect client.
-// It does not forgive or work around broken OpenID Connect or OAuth2 providers.
-// Supports verifying RSA256 and ED25519 signed ID tokens.
-// Only implements the most secured flow, authorization code flow.
 package oidclient
 
 import (
 	"context"
-	"errors"
+	"crypto/tls"
+	"encoding/json"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"time"
+
+	"github.com/hooklift/httpclient"
+	"github.com/pkg/errors"
+)
+
+const (
+	configEndpoint = "/.well-known/openid-configuration"
 )
 
 // TokenStore defines an interface to store and retrieve tokens. Encryption at rest is highly suggested.
@@ -68,11 +75,20 @@ func WithTokenStore(store TokenStore) ProviderOption {
 }
 
 // UserInfo defines the information usually returned by identity providers for the owner of an access or ID token.
-type UserInfo struct{}
+type UserInfo struct {
+	Subject    string `json:"sub"`
+	Name       string `json:"name"`
+	GivenName  string `json:"given_name"`
+	FamilyName string `json:"family_name"`
+	Email      string `json:"email"`
+	Picture    string `json:"picture"`
+}
 
 // Provider holds the identity provider configuration information, discovered during initialization. This configuration
 // is cached and refreshed based on cache-control policies returned by the identity provider.
 type Provider struct {
+	providerOptions
+	httpClient                   *http.Client
 	Issuer                       string   `json:"issuer,omitempty"`
 	AuthorizationEndpoint        string   `json:"authorization_endpoint,omitempty"`
 	TokenEndpoint                string   `json:"token_endpoint,omitempty"`
@@ -95,12 +111,71 @@ type Provider struct {
 
 // New fetches provider configuration and returns a new OpenID Connect provider client.
 func New(ctx context.Context, providerURL string, opts ...ProviderOption) (*Provider, error) {
-	// Fetch providerURL + "/.well-known/openid-configuration"
-	return nil, nil
+	cfg := new(providerOptions)
+	cfg.providerURL = providerURL
+
+	for _, opt := range opts {
+		if err := opt(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	p := &Provider{
+		providerOptions: *cfg,
+	}
+
+	p.newHTTPClient()
+
+	if err := p.loadConfig(); err != nil {
+		return nil, errors.Wrapf(err, "failed loading provider configuration")
+	}
+
+	return p, nil
 }
 
-// UserInfo returns user for the ID token subject or owner.
+// TODO(c4milo): External caching support
+func (p *Provider) loadConfig() error {
+	res, err := p.httpClient.Get(p.providerURL + configEndpoint)
+	if err != nil {
+		return errors.Wrapf(err, "failed retrieving provider configuration from: %s", p.providerURL)
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return errors.Wrapf(err, "failed reading provider configuration")
+	}
+
+	if err := json.Unmarshal(body, p); err != nil {
+		return errors.Wrapf(err, "failed decoding provider configuration")
+	}
+
+	return nil
+}
+
+func (p *Provider) newHTTPClient() {
+	tr := &http.Transport{
+		DialContext:           httpclient.DialContext(30*time.Second, 10*time.Second),
+		Proxy:                 http.ProxyFromEnvironment,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	}
+
+	if p.skipTLSVerify {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	p.httpClient = &http.Client{Transport: tr}
+}
+
+// UserInfo returns user information for the access token subject.
 func (p *Provider) UserInfo(ctx context.Context) (*UserInfo, error) {
+	if p.UserinfoEndpoint == "" {
+		return nil, ErrNotSupported
+	}
+	// TODO(c4milo): Send Authorization header with bearer access token
 	return nil, nil
 }
 
@@ -109,6 +184,7 @@ func (p *Provider) RegisterClient(ctx context.Context) error {
 	if p.RegistrationEndpoint == "" {
 		return ErrNotSupported
 	}
+	// TODO(c4milo): Send Authorization header with bearer access token
 	return nil
 }
 
@@ -118,6 +194,7 @@ func (p *Provider) RevokeToken(ctx context.Context) error {
 		return ErrNotSupported
 	}
 	return nil
+	// TODO(c4milo): Send Authorization header with client credentials
 }
 
 // IntrospectToken allows to gather access token information form identity providers that support https://tools.ietf.org/html/rfc7662
@@ -126,6 +203,7 @@ func (p *Provider) IntrospectToken(ctx context.Context) error {
 		return ErrNotSupported
 	}
 	return nil
+	// TODO(c4milo): Send Authorization header with client credentials
 }
 
 // Keys allows to retrieve identity provider's public token signing keys in order to verify that tokens
