@@ -17,6 +17,7 @@ func Example_desktop() {
 	provider, err := oidclient.New(ctx, "https://id.hooklift.io", []oidclient.ProviderOption{
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
+		oidclient.WithSecret("mysecret", "mysecretold"),
 		oidclient.TokenStore(&store.LocalKeychain{}),
 	}...)
 	if err != nil {
@@ -76,6 +77,7 @@ func Example_mobile() {
 		oidclient.ClientID("client_blah"),
 		oidclient.ClientSecret("secret_blah"),
 		oidclient.SkipTLSVerify(),
+		oidclient.WithSecret("mysecret", "mysecretold"),
 		oidclient.TokenStore(&store.LocalKeychain{}),
 	}...)
 	if err != nil {
@@ -127,6 +129,7 @@ func Example_web() {
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
 		oidclient.SkipTLSVerify(),
+		oidclient.WithSecret("mysecret", "mysecretold"),
 		oidclient.TokenStore(&store.Redis{
 			Address: "localhost:6379",
 		}),

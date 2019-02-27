@@ -40,6 +40,7 @@ type providerOptions struct {
 	clientSecret  string
 	skipTLSVerify bool
 	tokenStore    TokenStore
+	storeSecrets  []string
 }
 
 // ProviderOption defines a type for passing Provider instantiation parameters.
@@ -77,6 +78,14 @@ func SkipTLSVerify() ProviderOption {
 func WithTokenStore(store TokenStore) ProviderOption {
 	return func(o *providerOptions) error {
 		o.tokenStore = store
+		return nil
+	}
+}
+
+// WithSecret sets a secret value use to encrypt tokens before sending them to an external storage. It supports rotating secrets.
+func WithSecret(secrets ...string) ProviderOption {
+	return func(o *providerOptions) error {
+		o.storeSecrets = secrets
 		return nil
 	}
 }
@@ -248,8 +257,8 @@ func (h *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 
 	// TODO(c4milo): If access token is close to expire, refresh and store it back in
-	// TODO(c4milo): Validate that ID token audience matches req.URL
-	// to avoid leaking the access token to another third-party
+	// TODO(c4milo): Only send access token if hostname matches any of the ID token audiences
+	// in order to avoid leaking access token to 3rd parties by accident.
 
 	new, err := h.p.RefreshToken(ctx, h.tks.refreshToken)
 	if err != nil {
@@ -282,7 +291,14 @@ func (p *Provider) HTTPClient(ctxt context.Context, tokens *Tokens, opts ...HTTP
 		}
 	}
 
-	p.tokenStore.Set(ctx, tokens.Encode())
+	encrypted, err := tokens.Encrypt()
+	if err != nil {
+
+	}
+
+	if err := p.tokenStore.Set(ctx, encrypted); err != nil {
+
+	}
 
 	client := &HTTPClient{p: p}
 	client.Transport = cfg.transport
