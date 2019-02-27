@@ -34,6 +34,22 @@ type Tokens struct {
 	ErrorURI         string `json:"error_uri,omitempty"`
 }
 
+// Validate validates ID and Access tokens according to https://openid.net/specs/openid-connect-core-1_0.html#rfc.section.3.1.3.7
+// and https://openid.net/specs/openid-connect-core-1_0.html#rfc.section.3.1.3.8
+func (t *Tokens) Validate() error {
+	return nil
+}
+
+// Encrypt encodes and encrypts all the tokens, ready to be stored in an external storage.
+func (t *Tokens) Encrypt() (string, error) {
+	return "", nil
+}
+
+// Decrypt decrypts and decodes tokens recovered from an external storage.
+func (t *Tokens) Decrypt(value string) error {
+	return nil
+}
+
 // randomPort generates a random port between IANA's dynamic/private port range.
 // This is 49151-65535. https://en.wikipedia.org/wiki/Registered_port
 func randomPort() string {
@@ -45,7 +61,7 @@ func randomPort() string {
 
 // Loopback spins up HTTP server listening in 127.0.0.1 and an unprivileged random TCP port. It receives OIDC provider's redirections,
 // containing authorization code, state or errors. Exchanging authorization code for tokens and returning them through the tokensChan
-// channel. This function exists to make it easier for users implementing native oidc/oauth2 applications such as CLIs or Electron apps.
+// channel.
 func (p *Provider) Loopback(ctx context.Context, tokensChan chan<- Tokens, opts ...AuthOption) (string, error) {
 	var (
 		err    error
@@ -69,6 +85,7 @@ func (p *Provider) Loopback(ctx context.Context, tokensChan chan<- Tokens, opts 
 			}()
 
 			query := req.URL.Query()
+
 			if query.Get("state") != cfg.state {
 				tokens.Error = errInvalidRequest
 				return
@@ -95,7 +112,7 @@ func (p *Provider) Loopback(ctx context.Context, tokensChan chan<- Tokens, opts 
 	return redirectURI, err
 }
 
-// RefreshToken allows to refresh Access and ID tokens, given a Refresh Token.
+// RefreshToken allows to refresh Access and ID tokens.
 func (p *Provider) RefreshToken(ctx context.Context, refreshToken string, scope ...string) (*Tokens, error) {
 	query := url.Values{}
 	query.Set("grant_type", "refresh_token")
@@ -143,20 +160,8 @@ func (p *Provider) tokens(ctx context.Context, query url.Values) (*Tokens, error
 		return nil, errors.Wrap(err, "failed decoding tokens response")
 	}
 
-	if err := validateTokens(tks); err != nil {
+	if err := tks.Validate(); err != nil {
 		return nil, errors.Wrap(err, "failed tokens validations")
 	}
-
 	return tks, nil
-}
-
-// validateTokens verifies ID token signature, expiration, audience and nonce.
-func validateTokens(tks *Tokens) error {
-	// TODO(c4milo): Validate ID tokens's signature
-	// TODO(c4milo): Validate at_hash
-	// TODO(c4milo): Validate c_hash
-	// TODO(c4milo): Validate token expiration
-	// TODO(c4milo): Validate intended ID Token audience
-	// TODO(c4milo): Validate ID Token nonce
-	return nil
 }

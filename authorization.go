@@ -13,21 +13,20 @@ import (
 // authOptions holds the authentication request parameters as per
 // https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
 type authOptions struct {
-	redirectURI  string
-	scope        []string
-	display      string
-	prompt       string
-	maxAge       int
-	idTokenHint  string
-	loginHint    string
-	uiLocales    []string
-	acrValues    []string
-	state        string
-	nonce        string
-	responseType string
+	redirectURI string
+	scope       []string
+	display     string
+	prompt      string
+	maxAge      int
+	idTokenHint string
+	loginHint   string
+	uiLocales   []string
+	acrValues   []string
+	state       string
+	nonce       string
 }
 
-// AuthOption defines a type to process authorization config options
+// AuthOption defines a type to process authorization config options.
 // It follows http://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html
 type AuthOption func(*authOptions) error
 
@@ -191,16 +190,12 @@ func (p *Provider) AuthorizationURL(ctx context.Context, opts ...AuthOption) (st
 		return "", errors.New("redirect URL requires https scheme")
 	}
 
-	if cfg.responseType == "" {
-		cfg.responseType = "code"
-	}
-
 	if cfg.state == "" || cfg.nonce == "" {
 		return "", errors.New("state and nonce cannot be empty")
 	}
 
 	query := url.Values{}
-	query.Set("response_type", cfg.responseType)
+	query.Set("response_type", "code")
 	query.Set("scope", strings.Join(cfg.scope, " "))
 	query.Set("state", cfg.state)
 	query.Set("nonce", cfg.nonce)

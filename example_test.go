@@ -7,21 +7,8 @@ import (
 	"net/http"
 
 	"github.com/hooklift/oidclient"
+	"github.com/hooklift/oidclient/store"
 )
-
-type RedisTokenStore struct {
-	Address  string
-	Password string
-	DB       int
-}
-
-func (r *RedisTokenStore) Save(ctx context.Context, tokens *oidclient.Tokens) error {
-	return nil
-}
-
-func (r *RedisTokenStore) Get(ctx context.Context, id string) (*oidclient.Tokens, error) {
-	return nil, nil
-}
 
 func Example_desktop() {
 	ctx := context.Background()
@@ -30,7 +17,7 @@ func Example_desktop() {
 	provider, err := oidclient.New(ctx, "https://id.hooklift.io", []oidclient.ProviderOption{
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
-		oidclient.SkipTLSVerify(),
+		oidclient.TokenStore(&store.LocalKeychain{}),
 	}...)
 	if err != nil {
 		log.Fatalf("error retrieving provider's configuration: %v", err)
@@ -49,7 +36,7 @@ func Example_desktop() {
 	}
 
 	// 3. Generate provider authorization URL for the user to open in a browser
-	authURI, err := provider.AuthorizationURL(ctx, []oidclient.AuthOption{
+	authURL, err := provider.AuthorizationURL(ctx, []oidclient.AuthOption{
 		oidclient.RedirectURI(redirectURI),
 		oidclient.State(state),
 		oidclient.Nonce(nonce),
@@ -59,7 +46,7 @@ func Example_desktop() {
 		log.Fatalf("error building authorize URL: %v", err)
 	}
 
-	log.Println("Open the following URL in your browser: %s", authURI)
+	log.Println("Open the following URL in your browser: %s", authURL)
 
 	// 4. OpenID Connect provider authenticates user and asks for consent for "client_blah" to get tokens
 	// 5. User approves or disapproves
@@ -78,7 +65,7 @@ func Example_desktop() {
 	// 11. Print out received tokens
 	log.Println("Tokens: %+v", tokens)
 
-	// httpClient, err := provider.HTTPClient(ctx, &tokens)
+	httpClient, err := provider.HTTPClient(ctx, tokens)
 }
 
 func Example_mobile() {
@@ -89,6 +76,7 @@ func Example_mobile() {
 		oidclient.ClientID("client_blah"),
 		oidclient.ClientSecret("secret_blah"),
 		oidclient.SkipTLSVerify(),
+		oidclient.TokenStore(&store.LocalKeychain{}),
 	}...)
 	if err != nil {
 		log.Fatalf("error retrieving provider's configuration: %v", err)
@@ -116,8 +104,14 @@ func Example_mobile() {
 
 	// 7. Our Application Delegate gets called with RedirectURI containing the code, state or error and error_description as query parameters
 	// 8. Retrieves tokens and validates state, nonce, intended audience and token's signatures.
-	authCode := "abasfasdf" // Retrieved from the URL passed by App Delegate to the app
-	tokens, err := provider.Tokens(ctx, authCode, redirectURI)
+
+	incomingAuthCode := "abasfasdf" // Retrieved from the URL passed by App Delegate to the app
+	incomingState := "1234"
+	if state != incomingState {
+		log.Fatalf("invalid state value")
+	}
+
+	tokens, err := provider.Tokens(ctx, incomingAuthCode, redirectURI)
 	if err != nil {
 		log.Fatalf("failed to retrieve tokens: %v", err)
 	}
@@ -133,10 +127,8 @@ func Example_web() {
 		oidclient.ClientID("blah"),
 		oidclient.ClientSecret("blah"),
 		oidclient.SkipTLSVerify(),
-		oidclient.WithTokenStore(&RedisTokenStore{
-			Address:  "localhost:6379",
-			Password: "",
-			DB:       0,
+		oidclient.TokenStore(&store.Redis{
+			Address: "localhost:6379",
 		}),
 	}...)
 	if err != nil {
